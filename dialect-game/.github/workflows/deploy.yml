@@ -1,0 +1,437 @@
+# Workflow CI/CD pour déploiement production
+# Task 18: Déploiement Production - Phase 4
+name: 🚀 Production Deployment
+
+on:
+  push:
+    branches: [ main, production ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      force_deploy:
+        description: 'Force deployment (skip tests)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '18.x'
+  PNPM_VERSION: '8.x'
+  REGISTRY_URL: 'ghcr.io'
+  IMAGE_NAME: 'dialect-game'
+
+jobs:
+  # Job 1: Tests et Quality Assurance
+  test:
+    name: 🧪 Tests & Quality Assurance
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.force_deploy }}
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+        
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: 📦 Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: 🔧 Install dependencies
+      run: |
+        npm ci --prefer-offline --no-audit
+        
+    - name: 🔍 Lint code
+      run: |
+        npm run lint
+        npm run lint:types
+        
+    - name: 🧪 Run unit tests
+      run: |
+        npm run test:unit -- --coverage --reporter=verbose
+        
+    - name: 🌐 Run integration tests
+      run: |
+        npm run test:integration
+        
+    - name: 📊 Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage/lcov.info
+        flags: unittests
+        name: dialect-game-coverage
+        
+    - name: 🔐 Security audit
+      run: |
+        npm audit --audit-level moderate
+        
+    - name: 📈 Bundle analyzer
+      run: |
+        npm run analyze
+        
+    - name: 💾 Cache test results
+      uses: actions/cache@v3
+      with:
+        path: |
+          ./coverage
+          ./test-results
+        key: test-results-${{ github.sha }}
+
+  # Job 2: Build et Optimization
+  build:
+    name: 🏗️ Build & Optimization
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: always() && (needs.test.result == 'success' || inputs.force_deploy)
+    
+    outputs:
+      build-id: ${{ steps.build-info.outputs.build-id }}
+      version: ${{ steps.build-info.outputs.version }}
+      
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 📦 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: 🔧 Install dependencies
+      run: npm ci --prefer-offline --no-audit
+      
+    - name: 🏷️ Generate build info
+      id: build-info
+      run: |
+        BUILD_ID="${GITHUB_SHA:0:8}-$(date +%s)"
+        VERSION=$(node -p "require('./package.json').version")
+        echo "build-id=$BUILD_ID" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        
+    - name: 🏗️ Build production
+      run: |
+        npm run build:production
+        
+    - name: 📦 Optimize assets
+      run: |
+        npm run optimize:images
+        npm run optimize:fonts
+        npm run generate:manifest
+        
+    - name: 🗜️ Compress build
+      run: |
+        tar -czf dialect-game-build-${{ steps.build-info.outputs.build-id }}.tar.gz dist/
+        
+    - name: 📤 Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-${{ steps.build-info.outputs.build-id }}
+        path: |
+          dist/
+          *.tar.gz
+        retention-days: 30
+
+  # Job 3: Docker Build et Registry
+  docker:
+    name: 🐳 Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production'
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🐳 Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: 🔐 Login to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY_URL }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: 📥 Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-${{ needs.build.outputs.build-id }}
+        
+    - name: 📋 Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY_URL }}/${{ github.repository }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=raw,value=${{ needs.build.outputs.version }}
+          
+    - name: 🏗️ Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          BUILD_ID=${{ needs.build.outputs.build-id }}
+          VERSION=${{ needs.build.outputs.version }}
+          COMMIT_SHA=${{ github.sha }}
+
+  # Job 4: Staging Deployment
+  deploy-staging:
+    name: 🎭 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, docker]
+    if: github.ref == 'refs/heads/main'
+    environment: 
+      name: staging
+      url: https://staging.dialect-game.com
+      
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: ☁️ Setup Cloud CLI
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        
+    - name: 🚀 Deploy to Cloud Run (Staging)
+      run: |
+        gcloud run deploy dialect-game-staging \
+          --image ${{ env.REGISTRY_URL }}/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          --platform managed \
+          --region us-central1 \
+          --allow-unauthenticated \
+          --set-env-vars="NODE_ENV=staging,BUILD_ID=${{ needs.build.outputs.build-id }}" \
+          --memory=2Gi \
+          --cpu=2 \
+          --min-instances=1 \
+          --max-instances=10 \
+          --concurrency=100
+          
+    - name: 🌐 Update CDN
+      run: |
+        gcloud compute url-maps invalidate-cdn-cache dialect-game-staging-lb \
+          --path="/*" \
+          --async
+          
+    - name: 🧪 Run smoke tests
+      run: |
+        npm run test:smoke -- --url=https://staging.dialect-game.com
+        
+    - name: 📊 Deploy monitoring dashboards
+      run: |
+        npm run deploy:monitoring -- --environment=staging
+
+  # Job 5: Production Deployment
+  deploy-production:
+    name: 🚀 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, docker, deploy-staging]
+    if: github.ref == 'refs/heads/production' || inputs.environment == 'production'
+    environment: 
+      name: production
+      url: https://dialect-game.com
+      
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: ☁️ Setup Cloud CLI
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY_PROD }}
+        project_id: ${{ secrets.GCP_PROJECT_ID_PROD }}
+        
+    - name: 🔄 Blue/Green Deployment Strategy
+      run: |
+        # Deploy to green environment
+        gcloud run deploy dialect-game-green \
+          --image ${{ env.REGISTRY_URL }}/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }} \
+          --platform managed \
+          --region us-central1,europe-west1,asia-southeast1 \
+          --allow-unauthenticated \
+          --set-env-vars="NODE_ENV=production,BUILD_ID=${{ needs.build.outputs.build-id }}" \
+          --memory=4Gi \
+          --cpu=4 \
+          --min-instances=3 \
+          --max-instances=50 \
+          --concurrency=1000 \
+          --max-surge-upgrade=20 \
+          --no-traffic
+          
+    - name: 🧪 Production health checks
+      run: |
+        npm run test:health -- --url=https://dialect-game-green-hash.a.run.app
+        npm run test:performance -- --url=https://dialect-game-green-hash.a.run.app
+        
+    - name: 🔄 Switch traffic (Blue/Green)
+      run: |
+        # Gradually switch traffic: 10% -> 50% -> 100%
+        gcloud run services update-traffic dialect-game \
+          --to-revisions=dialect-game-green=10 \
+          --region=us-central1
+          
+        sleep 300  # Wait 5 minutes
+        
+        gcloud run services update-traffic dialect-game \
+          --to-revisions=dialect-game-green=50 \
+          --region=us-central1
+          
+        sleep 600  # Wait 10 minutes
+        
+        gcloud run services update-traffic dialect-game \
+          --to-revisions=dialect-game-green=100 \
+          --region=us-central1
+          
+    - name: 🌐 Update Global CDN
+      run: |
+        # Invalidate CDN cache globally
+        for region in us-central1 europe-west1 asia-southeast1; do
+          gcloud compute url-maps invalidate-cdn-cache dialect-game-lb-$region \
+            --path="/*" \
+            --async
+        done
+        
+    - name: 📊 Deploy production monitoring
+      run: |
+        npm run deploy:monitoring -- --environment=production
+        npm run setup:alerts -- --environment=production
+        
+    - name: 🏷️ Create release tag
+      run: |
+        git tag -a v${{ needs.build.outputs.version }}-${{ needs.build.outputs.build-id }} \
+          -m "Production release v${{ needs.build.outputs.version }}"
+        git push origin v${{ needs.build.outputs.version }}-${{ needs.build.outputs.build-id }}
+
+  # Job 6: Post-Deployment Tasks
+  post-deploy:
+    name: 📋 Post-Deployment Tasks
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always() && needs.deploy-production.result == 'success'
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 📊 Performance monitoring setup
+      run: |
+        # Setup Lighthouse CI
+        npm run lighthouse:setup
+        
+        # Setup Web Vitals monitoring
+        npm run vitals:setup
+        
+    - name: 🔍 Security scanning
+      run: |
+        # OWASP ZAP security scan
+        npm run security:scan -- --url=https://dialect-game.com
+        
+    - name: 📈 Analytics setup
+      run: |
+        # Setup Google Analytics
+        npm run analytics:deploy
+        
+        # Setup Mixpanel tracking
+        npm run mixpanel:deploy
+        
+    - name: 📧 Deployment notifications
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+        text: |
+          🚀 Dialect Game v${{ needs.build.outputs.version }} successfully deployed to production!
+          
+          📊 Build ID: ${{ needs.build.outputs.build-id }}
+          🔗 URL: https://dialect-game.com
+          👤 Deployed by: ${{ github.actor }}
+          📝 Commit: ${{ github.sha }}
+          
+    - name: 📋 Create deployment summary
+      run: |
+        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Version:** v${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Build ID:** ${{ needs.build.outputs.build-id }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
+        echo "**URL:** https://dialect-game.com" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ✅ Deployment completed successfully!" >> $GITHUB_STEP_SUMMARY
+
+  # Job 7: Rollback (Manual trigger)
+  rollback:
+    name: 🔄 Rollback Deployment
+    runs-on: ubuntu-latest
+    if: failure() && github.ref == 'refs/heads/production'
+    environment: 
+      name: production
+      
+    steps:
+    - name: ☁️ Setup Cloud CLI
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY_PROD }}
+        project_id: ${{ secrets.GCP_PROJECT_ID_PROD }}
+        
+    - name: 🔄 Automatic rollback
+      run: |
+        # Get previous stable revision
+        PREVIOUS_REVISION=$(gcloud run revisions list \
+          --service=dialect-game \
+          --region=us-central1 \
+          --filter="status.conditions.type:Ready AND status.conditions.status:True" \
+          --sort-by="~metadata.creationTimestamp" \
+          --limit=2 \
+          --format="value(metadata.name)" | tail -n 1)
+          
+        # Rollback to previous revision
+        gcloud run services update-traffic dialect-game \
+          --to-revisions=$PREVIOUS_REVISION=100 \
+          --region=us-central1
+          
+    - name: 📧 Rollback notification
+      uses: 8398a7/action-slack@v3
+      with:
+        status: 'warning'
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        text: |
+          ⚠️ Automatic rollback triggered for Dialect Game production deployment
+          
+          🔄 Previous stable version restored
+          🔍 Please investigate deployment issues
+          👤 Triggered by: ${{ github.actor }}

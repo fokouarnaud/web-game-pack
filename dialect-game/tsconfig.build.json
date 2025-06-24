@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "src/components/archive/**/*",
+    "src/components/archive.bak/**/*",
+    "src/components/App.enhanced.tsx",
+    "src/components/core/lesson/GameLessonEducational.Enhanced.tsx",
+    "node_modules",
+    "**/*.test.*",
+    "**/*.spec.*"
+  ]
+}

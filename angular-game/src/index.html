@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Dialect Game - Apprenez les langues avec l'IA</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Apprenez les langues de manière interactive avec Dialect Game. Reconnaissance vocale, IA conversationnelle et leçons adaptatives.">
+  <meta name="keywords" content="apprentissage langue, français, IA, reconnaissance vocale, éducation">
+  <meta name="author" content="Dialect Game Team">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://dialectgame.com/">
+  <meta property="og:title" content="Dialect Game - Apprenez les langues avec l'IA">
+  <meta property="og:description" content="Apprenez les langues de manière interactive avec Dialect Game. Reconnaissance vocale, IA conversationnelle et leçons adaptatives.">
+  <meta property="og:image" content="/assets/images/og-image.png">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://dialectgame.com/">
+  <meta property="twitter:title" content="Dialect Game - Apprenez les langues avec l'IA">
+  <meta property="twitter:description" content="Apprenez les langues de manière interactive avec Dialect Game. Reconnaissance vocale, IA conversationnelle et leçons adaptatives.">
+  <meta property="twitter:image" content="/assets/images/twitter-image.png">
+
+  <!-- Icons -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192x192.png">
+  <link rel="manifest" href="/manifest.json">
+  
+  <!-- Theme color -->
+  <meta name="theme-color" content="#3f51b5">
+  <meta name="msapplication-TileColor" content="#3f51b5">
+  
+  <!-- Preconnect to external domains -->
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  
+  <!-- Security headers -->
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <meta http-equiv="X-Frame-Options" content="DENY">
+  <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+  <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+  
+  <!-- CSP will be added by server -->
+  
+  <style>
+    /* Critical CSS for initial load */
+    body {
+      margin: 0;
+      font-family: Roboto, "Helvetica Neue", sans-serif;
+      background-color: #fafafa;
+    }
+    
+    .initial-loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #fafafa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    
+    .loader-content {
+      text-align: center;
+    }
+    
+    .loader-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid #e0e0e0;
+      border-top: 3px solid #3f51b5;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    .loader-text {
+      margin-top: 1rem;
+      color: #666;
+      font-size: 1rem;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      body, .initial-loader {
+        background-color: #121212;
+      }
+      .loader-text {
+        color: #ccc;
+      }
+    }
+  </style>
+</head>
+<body>
+  <app-root>
+    <!-- Initial loading screen -->
+    <div class="initial-loader">
+      <div class="loader-content">
+        <div class="loader-spinner"></div>
+        <div class="loader-text">Chargement de Dialect Game...</div>
+      </div>
+    </div>
+  </app-root>
+  
+  <!-- Service Worker registration -->
+  <script>
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      navigator.serviceWorker.register('/ngsw-worker.js')
+        .then(registration => console.log('SW registered:', registration))
+        .catch(error => console.log('SW registration failed:', error));
+    }
+  </script>
+  
+  <!-- Error handling for older browsers -->
+  <script>
+    window.addEventListener('error', function(e) {
+      console.error('Global error:', e.error);
+    });
+    
+    window.addEventListener('unhandledrejection', function(e) {
+      console.error('Unhandled promise rejection:', e.reason);
+    });
+  </script>
+</body>
+</html>

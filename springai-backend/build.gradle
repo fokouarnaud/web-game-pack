@@ -1,0 +1,98 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.5'
+    id 'io.spring.dependency-management' version '1.1.4'
+    id 'org.springdoc.openapi-gradle-plugin' version '1.8.0'
+}
+
+group = 'com.dialectgame'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    sourceCompatibility = '21'
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }
+    maven { url 'https://repo.spring.io/snapshot' }
+}
+
+ext {
+    springAiVersion = "1.0.0-M1"
+    springBootVersion = "3.2.5"
+}
+
+dependencies {
+    // Spring Boot Starters
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    
+    // Spring AI
+    implementation platform("org.springframework.ai:spring-ai-bom:${springAiVersion}")
+    implementation 'org.springframework.ai:spring-ai-openai-spring-boot-starter'
+    implementation 'org.springframework.ai:spring-ai-ollama-spring-boot-starter'
+    implementation 'org.springframework.ai:spring-ai-anthropic-spring-boot-starter'
+    implementation 'org.springframework.ai:spring-ai-audio-transcription-openai'
+    
+    // Database
+    implementation 'org.postgresql:postgresql'
+    implementation 'com.h2database:h2'
+    
+    // Security & JWT
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
+    implementation 'io.jsonwebtoken:jjwt-impl:0.12.5'
+    implementation 'io.jsonwebtoken:jjwt-jackson:0.12.5'
+    
+    // OpenAPI Documentation
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0'
+    
+    // JSON Processing
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    
+    // Utilities
+    implementation 'org.apache.commons:commons-lang3'
+    implementation 'org.mapstruct:mapstruct:1.5.5.Final'
+    
+    // Development
+    compileOnly 'org.projectlombok:lombok'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    annotationProcessor 'org.projectlombok:lombok'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
+    
+    // Testing
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'org.springframework.ai:spring-ai-spring-boot-testcontainers'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
+        mavenBom "org.testcontainers:testcontainers-bom:1.19.7"
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// OpenAPI Configuration
+openApi {
+    apiDocsUrl = "http://localhost:8080/v3/api-docs"
+    outputDir = file("$buildDir/docs")
+    outputFileName = "openapi.json"
+}

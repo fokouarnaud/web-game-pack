@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: dialectgame-postgres
+    environment:
+      POSTGRES_DB: dialectgame
+      POSTGRES_USER: dialectgame
+      POSTGRES_PASSWORD: dialectgame_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - dialectgame-network
+
+  # Ollama for local AI
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dialectgame-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - dialectgame-network
+    # Pull models on startup
+    command: |
+      sh -c "
+        ollama serve &
+        sleep 10 &&
+        ollama pull llama3.1 &&
+        ollama pull mistral &&
+        wait
+      "
+
+  # Spring Boot Application
+  app:
+    build: .
+    container_name: dialectgame-backend
+    depends_on:
+      - postgres
+      - ollama
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: dialectgame
+      DB_USER: dialectgame
+      DB_PASSWORD: dialectgame_password
+      OLLAMA_BASE_URL: http://ollama:11434
+      JWT_SECRET: mySecretKey123456789012345678901234567890123456789012345678901234567890
+    ports:
+      - "8080:8080"
+    networks:
+      - dialectgame-network
+    volumes:
+      - app_uploads:/app/uploads
+    restart: unless-stopped
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: dialectgame-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - dialectgame-network
+
+volumes:
+  postgres_data:
+  ollama_data:
+  redis_data:
+  app_uploads:
+
+networks:
+  dialectgame-network:
+    driver: bridge

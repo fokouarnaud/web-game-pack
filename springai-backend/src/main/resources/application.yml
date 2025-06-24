@@ -1,0 +1,175 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: springai-backend
+  
+  # Database Configuration
+  datasource:
+    url: jdbc:h2:mem:dialectgame;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driverClassName: org.h2.Driver
+    username: sa
+    password: password
+  
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+  
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # Spring AI Configuration
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:demo-key}
+      chat:
+        options:
+          model: gpt-4o-mini
+          temperature: 0.7
+          max-tokens: 1000
+      audio:
+        transcription:
+          options:
+            model: whisper-1
+            language: fr
+    
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: llama3.1
+          temperature: 0.7
+    
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:demo-key}
+      chat:
+        options:
+          model: claude-3-haiku-20240307
+          temperature: 0.7
+
+  # Security Configuration
+  security:
+    jwt:
+      secret: ${JWT_SECRET:mySecretKey123456789012345678901234567890}
+      expiration: 86400000 # 24 hours
+      refresh-expiration: 604800000 # 7 days
+
+  # WebSocket Configuration
+  websocket:
+    allowed-origins: 
+      - "http://localhost:4200"
+      - "http://localhost:3000"
+
+# Application Configuration
+app:
+  ai:
+    provider: ollama # ollama, openai, anthropic
+    fallback-provider: openai
+    enable-fallback: true
+    models:
+      conversation: llama3.1
+      voice-analysis: whisper-1
+      content-generation: gpt-4o-mini
+  
+  voice:
+    max-audio-size: 10MB
+    supported-formats: 
+      - mp3
+      - wav
+      - m4a
+      - ogg
+    confidence-threshold: 0.7
+  
+  lesson:
+    default-language: fr
+    supported-languages:
+      - fr
+      - en
+      - es
+      - de
+
+# Logging Configuration
+logging:
+  level:
+    com.dialectgame: DEBUG
+    org.springframework.ai: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+# OpenAPI Documentation
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+  info:
+    title: Dialect Game API
+    description: Spring AI powered language learning game backend
+    version: 1.0.0
+    contact:
+      name: Dialect Game Team
+      email: contact@dialectgame.com
+  servers:
+    - url: http://localhost:8080/api
+      description: Development server
+
+---
+# Production Profile
+spring:
+  config:
+    activate:
+      on-profile: production
+  
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:dialectgame}
+    username: ${DB_USER:dialectgame}
+    password: ${DB_PASSWORD:password}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+  
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  
+  h2:
+    console:
+      enabled: false
+
+logging:
+  level:
+    com.dialectgame: INFO
+    org.springframework.ai: WARN
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
